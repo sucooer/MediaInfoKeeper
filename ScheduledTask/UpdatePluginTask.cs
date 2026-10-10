@@ -57,7 +57,7 @@ namespace MediaInfoKeeper.ScheduledTask {
         private static string PluginAssemblyFilename => Assembly.GetExecutingAssembly().GetName().Name + ".dll";
 
         private static string RepoVersionUrl =>
-            "https://raw.githubusercontent.com/honue/MediaInfoKeeper/master/Version.json";
+            "https://raw.githubusercontent.com/sucooer/MediaInfoKeeper/master/Version.json";
 
         public string Key => "UpdatePluginTask";
 

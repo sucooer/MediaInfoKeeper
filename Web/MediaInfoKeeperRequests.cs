@@ -40,6 +40,12 @@ namespace MediaInfoKeeper.Web {
         public string[] Ids { get; set; }
     }
 
+    [Route("/MediaInfoKeeper/Items/ExportMediaInfo", "POST")]
+    [Authenticated(Roles = "Admin")]
+    public class ExportMediaInfoRequest : IReturn<MediaInfoMenuResponse> {
+        public string[] Ids { get; set; }
+    }
+
     [Route("/MediaInfoKeeper/Items/DeleteMediaInfoPersist", "POST")]
     [Authenticated(Roles = "Admin")]
     public class DeleteMediaInfoPersistRequest : IReturn<MediaInfoMenuResponse> {

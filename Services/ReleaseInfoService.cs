@@ -43,7 +43,7 @@ namespace MediaInfoKeeper.Services {
         }
 
         private static string RepoReleaseUrlTemplate =>
-            $"https://api.github.com/repos/honue/MediaInfoKeeper/releases?per_page={ReleasePageSize}&page={{0}}";
+            $"https://api.github.com/repos/sucooer/MediaInfoKeeper/releases?per_page={ReleasePageSize}&page={{0}}";
 
         public string LatestVersion {
             get {

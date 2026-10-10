@@ -85,6 +85,13 @@ define(['connectionManager', 'globalize', 'loading', 'toast', 'confirm'], functi
             : (['zh-hk', 'zh-tw'].includes(locale) ? '提取媒體信息' : 'Extract MediaInfo');
     }
 
+    function getExportCommandName() {
+        const locale = (globalize.getCurrentLocale() || '').toLowerCase();
+        return locale === 'zh-cn'
+            ? '备份媒体信息'
+            : (['zh-hk', 'zh-tw'].includes(locale) ? '備份媒體信息' : 'Backup MediaInfo');
+    }
+
     function getDeleteCommandName() {
         const locale = (globalize.getCurrentLocale() || '').toLowerCase();
         return locale === 'zh-cn'
@@ -127,36 +134,75 @@ define(['connectionManager', 'globalize', 'loading', 'toast', 'confirm'], functi
             : (['zh-hk', 'zh-tw'].includes(locale) ? '複製媒體庫' : 'Duplicate Library');
     }
 
+    function getActionCommandName(action) {
+        if (action === 'export') {
+            return getExportCommandName();
+        }
+        if (action === 'delete') {
+            return getDeleteCommandName();
+        }
+        if (action === 'scan_intro') {
+            return getScanIntroCommandName();
+        }
+        if (action === 'scan_external_files') {
+            return getScanExternalFilesCommandName();
+        }
+        if (action === 'set_intro') {
+            return getSetIntroCommandName();
+        }
+        if (action === 'clear_intro') {
+            return getClearIntroCommandName();
+        }
+        if (action === 'copy_library') {
+            return getCopyLibraryCommandName();
+        }
+        return getCommandName();
+    }
+
+    function getCompletionLabel(action) {
+        const locale = (globalize.getCurrentLocale() || '').toLowerCase();
+        const traditional = ['zh-hk', 'zh-tw'].includes(locale);
+        if (action === 'export') {
+            return locale === 'zh-cn' ? '备份完成' : (traditional ? '備份完成' : 'Completed');
+        }
+        if (action === 'delete') {
+            return locale === 'zh-cn' ? '删除完成' : (traditional ? '刪除完成' : 'Completed');
+        }
+        if (action === 'scan_intro' || action === 'scan_external_files') {
+            return locale === 'zh-cn' ? '扫描完成' : (traditional ? '掃描完成' : 'Completed');
+        }
+        if (action === 'set_intro') {
+            return locale === 'zh-cn' ? '设置完成' : (traditional ? '設置完成' : 'Completed');
+        }
+        if (action === 'clear_intro') {
+            return locale === 'zh-cn' ? '清除完成' : (traditional ? '清除完成' : 'Completed');
+        }
+        return locale === 'zh-cn' ? '提取完成' : (traditional ? '提取完成' : 'Completed');
+    }
+
     function getResultMessage(result, action) {
         const normalized = normalizeResult(result);
-        const isDelete = action === 'delete';
-        const isScanIntro = action === 'scan_intro';
-        const isScanExternalFiles = action === 'scan_external_files';
-        const isSetIntro = action === 'set_intro';
-        const isClearIntro = action === 'clear_intro';
         if (!result) {
-            return (isDelete ? getDeleteCommandName() : (isScanIntro ? getScanIntroCommandName() : (isScanExternalFiles ? getScanExternalFilesCommandName() : (isSetIntro ? getSetIntroCommandName() : (isClearIntro ? getClearIntroCommandName() : getCommandName()))))) + ' finished';
+            return getActionCommandName(action) + ' finished';
         }
 
         const locale = (globalize.getCurrentLocale() || '').toLowerCase();
         if (!normalized.hasStats) {
             if (locale === 'zh-cn') {
-                return (isDelete ? '删除完成' : (isScanIntro ? '扫描完成' : (isScanExternalFiles ? '扫描完成' : (isSetIntro ? '设置完成' : (isClearIntro ? '清除完成' : '提取完成'))))) + '（返回体无统计字段，请看日志）';
+                return getCompletionLabel(action) + '（返回体无统计字段，请看日志）';
             }
             if (['zh-hk', 'zh-tw'].includes(locale)) {
-                return (isDelete ? '刪除完成' : (isScanIntro ? '掃描完成' : (isScanExternalFiles ? '掃描完成' : (isSetIntro ? '設置完成' : (isClearIntro ? '清除完成' : '提取完成'))))) + '（返回體無統計字段，請看日誌）';
+                return getCompletionLabel(action) + '（返回體無統計字段，請看日誌）';
             }
             return 'Completed (no stats in response, check server logs)';
         }
 
         if (locale === 'zh-cn') {
-            const prefix = isDelete ? '删除完成' : (isScanIntro ? '扫描完成' : (isScanExternalFiles ? '扫描完成' : (isSetIntro ? '设置完成' : (isClearIntro ? '清除完成' : '提取完成'))));
-            return prefix + `：成功 ${normalized.succeeded}，失败 ${normalized.failed}，跳过 ${normalized.skipped}`;
+            return getCompletionLabel(action) + `：成功 ${normalized.succeeded}，失败 ${normalized.failed}，跳过 ${normalized.skipped}`;
         }
 
         if (['zh-hk', 'zh-tw'].includes(locale)) {
-            const prefix = isDelete ? '刪除完成' : (isScanIntro ? '掃描完成' : (isScanExternalFiles ? '掃描完成' : (isSetIntro ? '設置完成' : (isClearIntro ? '清除完成' : '提取完成'))));
-            return prefix + `：成功 ${normalized.succeeded}，失敗 ${normalized.failed}，跳過 ${normalized.skipped}`;
+            return getCompletionLabel(action) + `：成功 ${normalized.succeeded}，失敗 ${normalized.failed}，跳過 ${normalized.skipped}`;
         }
 
         return `Completed: success ${normalized.succeeded}, failed ${normalized.failed}, skipped ${normalized.skipped}`;
@@ -266,13 +312,7 @@ define(['connectionManager', 'globalize', 'loading', 'toast', 'confirm'], functi
     }
 
     function getErrorMessage(action, err) {
-        const isDelete = action === 'delete';
-        const isScanIntro = action === 'scan_intro';
-        const isScanExternalFiles = action === 'scan_external_files';
-        const isSetIntro = action === 'set_intro';
-        const isClearIntro = action === 'clear_intro';
-        const isCopyLibrary = action === 'copy_library';
-        const commandName = isDelete ? getDeleteCommandName() : (isScanIntro ? getScanIntroCommandName() : (isScanExternalFiles ? getScanExternalFilesCommandName() : (isSetIntro ? getSetIntroCommandName() : (isClearIntro ? getClearIntroCommandName() : (isCopyLibrary ? getCopyLibraryCommandName() : getCommandName())))));
+        const commandName = getActionCommandName(action);
         const detail = (err && (err.message || err.statusText || err.responseText)) ? ` (${err.message || err.statusText || err.responseText})` : '';
         return commandName + ' failed' + detail;
     }
@@ -541,6 +581,30 @@ define(['connectionManager', 'globalize', 'loading', 'toast', 'confirm'], functi
                     toast(getResultMessage(result, 'extract'));
                 }).catch(function (err) {
                     toast(getErrorMessage('extract', err));
+                }).finally(function () {
+                    loading.hide();
+                });
+            });
+        },
+
+        exportMediaInfo: function (ids) {
+            if (!ids || !ids.length) {
+                return Promise.resolve();
+            }
+
+            const commandName = getExportCommandName();
+            return confirm({
+                text: globalize.translate('AreYouSureToContinue'),
+                title: commandName,
+                confirmText: commandName,
+                primary: 'cancel'
+            }).then(function () {
+                loading.show();
+                const apiClient = connectionManager.currentApiClient();
+                return postJson(apiClient, 'MediaInfoKeeper/Items/ExportMediaInfo', {Ids: ids}).then(function (result) {
+                    toast(getResultMessage(result, 'export'));
+                }).catch(function (err) {
+                    toast(getErrorMessage('export', err));
                 }).finally(function () {
                     loading.hide();
                 });
@@ -852,6 +916,7 @@ define(['connectionManager', 'globalize', 'loading', 'toast', 'confirm'], functi
                 if (libraryItems.length === 1) {
                     commands.push({name: getCopyLibraryCommandName(), id: 'copy_library', icon: 'content_copy'});
                     commands.push({name: getCommandName(), id: 'extract_media_info', icon: '4k'});
+                    commands.push({name: getExportCommandName(), id: 'export_media_info', icon: 'archive'});
                     commands.push({
                         name: getDeleteCommandName(),
                         id: 'delete_media_info_persist',
@@ -870,6 +935,7 @@ define(['connectionManager', 'globalize', 'loading', 'toast', 'confirm'], functi
                 }
 
                 commands.push({name: getCommandName(), id: 'extract_media_info', icon: '4k'});
+                commands.push({name: getExportCommandName(), id: 'export_media_info', icon: 'archive'});
                 commands.push({name: getDeleteCommandName(), id: 'delete_media_info_persist', icon: 'delete_forever'});
 
                 const introSupportedTypes = {Episode: true, Season: true, Series: true};
@@ -912,6 +978,10 @@ define(['connectionManager', 'globalize', 'loading', 'toast', 'confirm'], functi
 
                 if (command === 'extract_media_info') {
                     return api.extractMediaInfo(ids);
+                }
+
+                if (command === 'export_media_info') {
+                    return api.exportMediaInfo(ids);
                 }
 
                 if (command === 'delete_media_info_persist') {

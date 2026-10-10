@@ -35,8 +35,8 @@ namespace MediaInfoKeeper.Options {
         [SelectItemsSource(nameof(UpdateChannelList))]
         public string UpdateChannel { get; set; } = UpdateChannelOption.Stable.ToString();
 
-        public LabelItem ProjectUrl { get; set; } = new("https://github.com/honue/MediaInfoKeeper") {
-            HyperLink = "https://github.com/honue/MediaInfoKeeper",
+        public LabelItem ProjectUrl { get; set; } = new("https://github.com/sucooer/MediaInfoKeeper") {
+            HyperLink = "https://github.com/sucooer/MediaInfoKeeper",
             Icon = IconNames.open_in_new
         };
 
