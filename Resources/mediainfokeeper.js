@@ -134,6 +134,13 @@ define(['connectionManager', 'globalize', 'loading', 'toast', 'confirm'], functi
             : (['zh-hk', 'zh-tw'].includes(locale) ? '複製媒體庫' : 'Duplicate Library');
     }
 
+    function getGenerateThumbnailsCommandName() {
+        const locale = (globalize.getCurrentLocale() || '').toLowerCase();
+        return locale === 'zh-cn'
+            ? '生成缩略图'
+            : (['zh-hk', 'zh-tw'].includes(locale) ? '生成縮略圖' : 'Generate Thumbnails');
+    }
+
     function getActionCommandName(action) {
         if (action === 'export') {
             return getExportCommandName();
@@ -156,6 +163,9 @@ define(['connectionManager', 'globalize', 'loading', 'toast', 'confirm'], functi
         if (action === 'copy_library') {
             return getCopyLibraryCommandName();
         }
+        if (action === 'generate_thumbnails') {
+            return getGenerateThumbnailsCommandName();
+        }
         return getCommandName();
     }
 
@@ -176,6 +186,9 @@ define(['connectionManager', 'globalize', 'loading', 'toast', 'confirm'], functi
         }
         if (action === 'clear_intro') {
             return locale === 'zh-cn' ? '清除完成' : (traditional ? '清除完成' : 'Completed');
+        }
+        if (action === 'generate_thumbnails') {
+            return locale === 'zh-cn' ? '生成完成' : (traditional ? '生成完成' : 'Completed');
         }
         return locale === 'zh-cn' ? '提取完成' : (traditional ? '提取完成' : 'Completed');
     }
@@ -683,6 +696,30 @@ define(['connectionManager', 'globalize', 'loading', 'toast', 'confirm'], functi
             });
         },
 
+        generateThumbnails: function (ids) {
+            if (!ids || !ids.length) {
+                return Promise.resolve();
+            }
+
+            const commandName = getGenerateThumbnailsCommandName();
+            return confirm({
+                text: globalize.translate('AreYouSureToContinue'),
+                title: commandName,
+                confirmText: commandName,
+                primary: 'cancel'
+            }).then(function () {
+                loading.show();
+                const apiClient = connectionManager.currentApiClient();
+                return postJson(apiClient, 'MediaInfoKeeper/Items/GenerateThumbnails', {Ids: ids}).then(function (result) {
+                    toast(getResultMessage(result, 'generate_thumbnails'));
+                }).catch(function (err) {
+                    toast(getErrorMessage('generate_thumbnails', err));
+                }).finally(function () {
+                    loading.hide();
+                });
+            });
+        },
+
         setIntro: function (ids, items) {
             if (!ids || !ids.length) {
                 return Promise.resolve();
@@ -928,6 +965,11 @@ define(['connectionManager', 'globalize', 'loading', 'toast', 'confirm'], functi
                         id: 'scan_external_files',
                         icon: 'subtitles'
                     });
+                    commands.push({
+                        name: getGenerateThumbnailsCommandName(),
+                        id: 'generate_thumbnails',
+                        icon: 'photo_library'
+                    });
                 }
 
                 if (!items.length) {
@@ -957,6 +999,21 @@ define(['connectionManager', 'globalize', 'loading', 'toast', 'confirm'], functi
                         name: getScanExternalFilesCommandName(),
                         id: 'scan_external_files',
                         icon: 'subtitles'
+                    });
+                }
+
+                const thumbnailSupportedTypes = {
+                    Movie: true,
+                    Episode: true,
+                    Season: true,
+                    Series: true,
+                    Video: true
+                };
+                if (items.every(item => thumbnailSupportedTypes[item.Type])) {
+                    commands.push({
+                        name: getGenerateThumbnailsCommandName(),
+                        id: 'generate_thumbnails',
+                        icon: 'photo_library'
                     });
                 }
 
@@ -994,6 +1051,10 @@ define(['connectionManager', 'globalize', 'loading', 'toast', 'confirm'], functi
 
                 if (command === 'scan_external_files') {
                     return api.scanExternalFiles(ids);
+                }
+
+                if (command === 'generate_thumbnails') {
+                    return api.generateThumbnails(ids);
                 }
 
                 if (command === 'set_intro') {
