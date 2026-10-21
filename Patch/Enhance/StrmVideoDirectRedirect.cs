@@ -212,16 +212,9 @@ namespace MediaInfoKeeper.Patch {
 
                 var originalUrl = mediaSource.Path;
                 var redirectUrl = ResolveRedirectUrl(originalUrl, requestContext?.UserAgent);
-                var decodedRedirectUrl = redirectUrl;
-                if (!string.IsNullOrWhiteSpace(decodedRedirectUrl))
-                    try {
-                        decodedRedirectUrl = Uri.UnescapeDataString(decodedRedirectUrl);
-                    }
-                    catch {
-                    }
 
                 __result = Task.FromResult(resultFactory.GetRedirectResult(redirectUrl));
-                logger?.Info("StrmVideoDirectRedirect: itemId={0}, finalUrl={1}", itemId, decodedRedirectUrl);
+                logger?.Info("StrmVideoDirectRedirect: itemId={0}, finalUrl={1}", itemId, redirectUrl);
                 DisposeState(state);
                 return false;
             }
@@ -411,41 +404,12 @@ namespace MediaInfoKeeper.Patch {
                     .ToArray();
         }
 
-        /// <summary>规范化 URL 与查询串编码，减少等价地址造成的缓存碎片。</summary>
+        /// <summary>
+        ///     保留 URL 原始编码。直链中的签名参数可能依赖 %2B、%2F 等精确转义形式，
+        ///     不能通过 UriBuilder 或解码/重编码流程重建。
+        /// </summary>
         private static string NormalizeRedirectUrl(string url) {
-            if (string.IsNullOrWhiteSpace(url)) return url;
-
-            var questionMarkIndex = url.IndexOf('?');
-            if (questionMarkIndex < 0)
-                return Uri.TryCreate(url, UriKind.Absolute, out var absoluteUri)
-                    ? absoluteUri.AbsoluteUri
-                    : url;
-
-            var baseUrl = url.Substring(0, questionMarkIndex);
-            var rawQuery = questionMarkIndex + 1 < url.Length
-                ? url.Substring(questionMarkIndex + 1)
-                : string.Empty;
-
-            if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri)) return url;
-
-            var builder = new UriBuilder(baseUri) {
-                Query = string.Join("&", Array.ConvertAll(
-                    rawQuery.Split('&', StringSplitOptions.RemoveEmptyEntries),
-                    pair => {
-                        var separatorIndex = pair.IndexOf('=');
-                        if (separatorIndex < 0) return Uri.EscapeDataString(Uri.UnescapeDataString(pair));
-
-                        var key = pair.Substring(0, separatorIndex);
-                        var value = separatorIndex + 1 < pair.Length
-                            ? pair.Substring(separatorIndex + 1)
-                            : string.Empty;
-                        return Uri.EscapeDataString(Uri.UnescapeDataString(key)) +
-                               "=" +
-                               Uri.EscapeDataString(Uri.UnescapeDataString(value));
-                    }))
-            };
-
-            return builder.Uri.AbsoluteUri;
+            return string.IsNullOrWhiteSpace(url) ? url : url.Trim();
         }
 
         private static T GetPropertyValue<T>(object instance, string propertyName) {
