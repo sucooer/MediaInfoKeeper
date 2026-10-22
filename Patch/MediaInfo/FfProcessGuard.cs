@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -495,6 +495,10 @@ namespace MediaInfoKeeper.Patch {
 
                 if (attempt < 5) await Task.Delay(1000).ConfigureAwait(false);
             }
+
+            // 提取慢于轮询窗口时这里放弃写入，由入库流程结束后的补写兜底，避免静默漏写。
+            logger?.Warn(
+                $"ffprobe 落盘未触发: 等待媒体流超时 item={context.ItemPath ?? context.ItemInternalId.ToString()}，改由入库流程结束时补写");
         }
 
         private static Type GetTaskResultType(Type taskType) {

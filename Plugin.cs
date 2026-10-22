@@ -583,6 +583,9 @@ namespace MediaInfoKeeper {
                     await MediaInfoRunner.WaitForItemFinishAsync(itemId, CancellationToken.None)
                             .ConfigureAwait(false);
 
+                    // 提取结束后统一落盘一次。ffprobe 钩子依赖 HasMediaInfo 的轮询窗口，
+                    // 慢提取（例如首次读取大文件）在窗口内拿不到媒体流，会导致 MediaSourceInfo 整段漏写。
+                    // 注意：真正的 ffprobe 由下面的刷新元数据触发，因此先刷新再落盘。
                     //释放入库信号量
                     itemAddedSemaphore.Release();
                     semaphoreHeld =  false;
@@ -590,6 +593,8 @@ namespace MediaInfoKeeper {
                     if (refreshMetadata) {
                         await MetaDataRunner.RefreshMetaDataAsync(itemId, priority: RefreshPriority.Highest, allowFfProcess: true);
                     }
+
+                    await PersistMediaInfoWhenReadyAsync(itemId, itemDisplayName).ConfigureAwait(false);
 
                     // 收藏通知和扫描收藏片头
                     if (item is Episode newEpisode && newEpisode.ExtraType == null) {
@@ -631,6 +636,41 @@ namespace MediaInfoKeeper {
                     if (semaphoreHeld) itemAddedSemaphore.Release();
                 }
             });
+        }
+
+        /// <summary>
+        ///     入库流程结束后补一次全量落盘。
+        ///     ffprobe 钩子最多轮询 6 秒等待 HasMediaInfo，实际 ffprobe 由刷新元数据触发，
+        ///     提取耗时超过窗口时不会写入 JSON，导致 MediaSourceInfo 段整段缺失。
+        ///     这里在刷新完成后轮询等待媒体流就绪，再以最新条目状态写一次完整 JSON。
+        /// </summary>
+        private async Task PersistMediaInfoWhenReadyAsync(long internalId, string displayName) {
+            const int maxAttempts = 30;
+            for (var attempt = 0; attempt < maxAttempts; attempt++) {
+                try {
+                    var latest = LibraryManager?.GetItemById(internalId);
+                    if (latest == null) {
+                        Logger.Warn($"入库媒体信息落盘跳过: 条目已不存在 item={displayName}");
+                        return;
+                    }
+
+                    if (MediaInfoService.HasMediaInfo(latest)) {
+                        MediaSourceInfoStore?.OverWriteToFile(latest);
+                        if (latest is Audio audio) EmbeddedInfoStore?.OverWriteToFile(audio);
+                        return;
+                    }
+                }
+                catch (Exception e) {
+                    Logger.Error($"入库媒体信息落盘失败 item={displayName}");
+                    Logger.Error(e.Message);
+                    Logger.Debug(e.StackTrace);
+                    return;
+                }
+
+                await Task.Delay(1000).ConfigureAwait(false);
+            }
+
+            Logger.Warn($"入库媒体信息落盘跳过: 等待媒体流超时 item={displayName}");
         }
 
         /// <summary> 收藏喜爱事件处 </summary>
