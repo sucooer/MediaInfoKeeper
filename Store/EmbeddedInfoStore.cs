@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -14,6 +14,8 @@ using MediaBrowser.Model.Serialization;
 namespace MediaInfoKeeper.Store {
     public class EmbeddedInfoStore {
         private const string DefaultImageMimeType = "image/jpeg";
+        private static readonly System.Text.RegularExpressions.Regex TrailingYearRegex =
+            new(@"\s*\((?:19|20)\d{2}\)$", System.Text.RegularExpressions.RegexOptions.Compiled);
         private readonly IJsonSerializer jsonSerializer;
         private readonly ILogger logger;
 
@@ -94,13 +96,13 @@ namespace MediaInfoKeeper.Store {
             try {
                 if (!string.IsNullOrWhiteSpace(snapshot.Name)) audio.Name = snapshot.Name;
 
-                audio.Album = snapshot.Album;
                 audio.AlbumArtists = snapshot.AlbumArtists ?? Array.Empty<string>();
                 audio.Artists = snapshot.Artists ?? Array.Empty<string>();
                 audio.Genres = snapshot.Genres ?? Array.Empty<string>();
                 audio.IndexNumber = snapshot.IndexNumber;
                 audio.ParentIndexNumber = snapshot.ParentIndexNumber;
                 audio.ProductionYear = snapshot.ProductionYear;
+                audio.Album = NormalizeAlbumValue(audio, snapshot.Album);
                 audio.SetProviderIds(
                     new ProviderIdDictionary(snapshot.ProviderIds ?? new Dictionary<string, string>()));
                 RestorePrimaryImage(audio, item);
@@ -117,12 +119,131 @@ namespace MediaInfoKeeper.Store {
             }
         }
 
+        /// <summary>
+        ///     剥离专辑名尾部的 "(年份)" 后缀。
+        ///     Emby 在元数据解析回退时会把文件夹名当专辑名写入条目，文件夹名带年份时
+        ///     Album 会变成 "专辑 (2026)"。仅当括号内年份与条目年份一致、且能通过
+        ///     内嵌标签或文件夹名回退特征确认时才剥离，避免误伤真正以年份结尾的专辑名。
+        /// </summary>
+        private string NormalizeAlbumValue(Audio audio, string candidate) {
+            if (string.IsNullOrWhiteSpace(candidate)) return candidate;
+
+            var match = TrailingYearRegex.Match(candidate);
+            if (!match.Success) return candidate;
+
+            var stripped = candidate.Substring(0, match.Index).TrimEnd();
+            if (string.IsNullOrWhiteSpace(stripped)) return candidate;
+
+            var yearText = candidate.Substring(match.Index + match.Length - 5, 4);
+            if (!int.TryParse(yearText, out var suffixYear)) return candidate;
+
+            if (audio.ProductionYear.HasValue && audio.ProductionYear.Value != suffixYear) return candidate;
+
+            // 内嵌标签可读时以标签为准：标签等于剥离值，说明年份来自文件夹名。
+            var tagAlbum = TryReadFlacAlbumTag(audio.Path);
+            if (tagAlbum != null)
+                return string.Equals(tagAlbum, stripped, StringComparison.Ordinal) ? stripped : candidate;
+
+            // 标签不可读（非 FLAC 或解析失败）时，用文件夹名回退特征校验。
+            var folderName = GetContainingFolderName(audio);
+            if (string.Equals(folderName, candidate, StringComparison.OrdinalIgnoreCase)) {
+                logger?.Info($"EmbeddedInfoStore 剥离专辑名年份后缀: {candidate} -> {stripped}");
+                return stripped;
+            }
+
+            return candidate;
+        }
+
+        private static string GetContainingFolderName(BaseItem item) {
+            var folderPath = item.ContainingFolderPath;
+            if (string.IsNullOrWhiteSpace(folderPath)) return null;
+
+            folderPath = folderPath.TrimEnd('\\', '/');
+            var separatorIndex = folderPath.LastIndexOfAny(new[] { '\\', '/' });
+            return separatorIndex < 0 ? folderPath : folderPath.Substring(separatorIndex + 1);
+        }
+
+        /// <summary>读取 FLAC 内嵌 Vorbis 注释中的 ALBUM 标签；非 FLAC 或读取失败返回 null。</summary>
+        private static string TryReadFlacAlbumTag(string mediaPath) {
+            try {
+                if (string.IsNullOrWhiteSpace(mediaPath) ||
+                    !mediaPath.EndsWith(".flac", StringComparison.OrdinalIgnoreCase) ||
+                    !File.Exists(mediaPath))
+                    return null;
+
+                using var stream = new FileStream(mediaPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                Span<byte> header = stackalloc byte[4];
+                if (stream.Read(header) < 4 || header[0] != (byte)'f' || header[1] != (byte)'L' ||
+                    header[2] != (byte)'a' || header[3] != (byte)'C')
+                    return null;
+
+                Span<byte> blockHeader = stackalloc byte[4];
+                while (stream.Read(blockHeader) == 4) {
+                    var isLast = (blockHeader[0] & 0x80) != 0;
+                    var blockType = blockHeader[0] & 0x7F;
+                    var blockSize = (blockHeader[1] << 16) | (blockHeader[2] << 8) | blockHeader[3];
+
+                    if (blockType == 4) {
+                        var block = new byte[blockSize];
+                        if (stream.Read(block) < blockSize) return null;
+
+                        return ReadAlbumFromVorbisComment(block);
+                    }
+
+                    if (isLast) return null;
+
+                    stream.Seek(blockSize, SeekOrigin.Current);
+                }
+            }
+            catch {
+                // best-effort: 标签读取失败时由文件夹名回退特征兜底。
+            }
+
+            return null;
+        }
+
+        private static string ReadAlbumFromVorbisComment(byte[] block) {
+            if (block.Length < 8) return null;
+
+            var pos = 4; // 跳过 vendor 长度前 4 字节中的高位读取起点
+            var vendorLength = BitConverter.ToInt32(block, 0);
+            if (vendorLength < 0 || vendorLength > block.Length) return null;
+
+            pos = 4 + vendorLength;
+            if (pos + 4 > block.Length) return null;
+
+            var commentCount = BitConverter.ToInt32(block, pos);
+            pos += 4;
+            if (commentCount < 0 || commentCount > 10000) return null;
+
+            for (var i = 0; i < commentCount; i++) {
+                if (pos + 4 > block.Length) return null;
+
+                var length = BitConverter.ToInt32(block, pos);
+                pos += 4;
+                if (length < 0 || pos + length > block.Length) return null;
+
+                var comment = System.Text.Encoding.UTF8.GetString(block, pos, length);
+                pos += length;
+
+                var equalsIndex = comment.IndexOf('=');
+                if (equalsIndex <= 0) continue;
+
+                var key = comment.Substring(0, equalsIndex);
+                if (!string.Equals(key, "ALBUM", StringComparison.OrdinalIgnoreCase)) continue;
+
+                return comment.Substring(equalsIndex + 1);
+            }
+
+            return null;
+        }
+
         private EmbeddedInfoSnapshot CreateForPersist(BaseItem item) {
             if (item is not Audio audio) return null;
 
             return new EmbeddedInfoSnapshot {
                 Name = audio.Name,
-                Album = audio.Album,
+                Album = NormalizeAlbumValue(audio, audio.Album),
                 AlbumArtists = audio.AlbumArtists ?? Array.Empty<string>(),
                 Artists = audio.Artists ?? Array.Empty<string>(),
                 Genres = audio.Genres ?? Array.Empty<string>(),
