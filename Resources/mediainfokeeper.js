@@ -92,6 +92,13 @@ define(['connectionManager', 'globalize', 'loading', 'toast', 'confirm'], functi
             : (['zh-hk', 'zh-tw'].includes(locale) ? '備份媒體信息' : 'Backup MediaInfo');
     }
 
+    function getRestoreCommandName() {
+        const locale = (globalize.getCurrentLocale() || '').toLowerCase();
+        return locale === 'zh-cn'
+            ? '恢复媒体信息'
+            : (['zh-hk', 'zh-tw'].includes(locale) ? '恢復媒體信息' : 'Restore MediaInfo');
+    }
+
     function getDeleteCommandName() {
         const locale = (globalize.getCurrentLocale() || '').toLowerCase();
         return locale === 'zh-cn'
@@ -145,6 +152,9 @@ define(['connectionManager', 'globalize', 'loading', 'toast', 'confirm'], functi
         if (action === 'export') {
             return getExportCommandName();
         }
+        if (action === 'restore') {
+            return getRestoreCommandName();
+        }
         if (action === 'delete') {
             return getDeleteCommandName();
         }
@@ -174,6 +184,9 @@ define(['connectionManager', 'globalize', 'loading', 'toast', 'confirm'], functi
         const traditional = ['zh-hk', 'zh-tw'].includes(locale);
         if (action === 'export') {
             return locale === 'zh-cn' ? '备份完成' : (traditional ? '備份完成' : 'Completed');
+        }
+        if (action === 'restore') {
+            return locale === 'zh-cn' ? '恢复完成' : (traditional ? '恢復完成' : 'Completed');
         }
         if (action === 'delete') {
             return locale === 'zh-cn' ? '删除完成' : (traditional ? '刪除完成' : 'Completed');
@@ -624,6 +637,30 @@ define(['connectionManager', 'globalize', 'loading', 'toast', 'confirm'], functi
             });
         },
 
+        restoreMediaInfo: function (ids) {
+            if (!ids || !ids.length) {
+                return Promise.resolve();
+            }
+
+            const commandName = getRestoreCommandName();
+            return confirm({
+                text: globalize.translate('AreYouSureToContinue'),
+                title: commandName,
+                confirmText: commandName,
+                primary: 'cancel'
+            }).then(function () {
+                loading.show();
+                const apiClient = connectionManager.currentApiClient();
+                return postJson(apiClient, 'MediaInfoKeeper/Items/RestoreMediaInfo', {Ids: ids}).then(function (result) {
+                    toast(getResultMessage(result, 'restore'));
+                }).catch(function (err) {
+                    toast(getErrorMessage('restore', err));
+                }).finally(function () {
+                    loading.hide();
+                });
+            });
+        },
+
         deleteMediaInfoPersist: function (ids) {
             if (!ids || !ids.length) {
                 return Promise.resolve();
@@ -954,6 +991,7 @@ define(['connectionManager', 'globalize', 'loading', 'toast', 'confirm'], functi
                     commands.push({name: getCopyLibraryCommandName(), id: 'copy_library', icon: 'content_copy'});
                     commands.push({name: getCommandName(), id: 'extract_media_info', icon: '4k'});
                     commands.push({name: getExportCommandName(), id: 'export_media_info', icon: 'archive'});
+                    commands.push({name: getRestoreCommandName(), id: 'restore_media_info', icon: 'restore'});
                     commands.push({
                         name: getDeleteCommandName(),
                         id: 'delete_media_info_persist',
@@ -978,6 +1016,7 @@ define(['connectionManager', 'globalize', 'loading', 'toast', 'confirm'], functi
 
                 commands.push({name: getCommandName(), id: 'extract_media_info', icon: '4k'});
                 commands.push({name: getExportCommandName(), id: 'export_media_info', icon: 'archive'});
+                commands.push({name: getRestoreCommandName(), id: 'restore_media_info', icon: 'restore'});
                 commands.push({name: getDeleteCommandName(), id: 'delete_media_info_persist', icon: 'delete_forever'});
 
                 const introSupportedTypes = {Episode: true, Season: true, Series: true};
@@ -1039,6 +1078,10 @@ define(['connectionManager', 'globalize', 'loading', 'toast', 'confirm'], functi
 
                 if (command === 'export_media_info') {
                     return api.exportMediaInfo(ids);
+                }
+
+                if (command === 'restore_media_info') {
+                    return api.restoreMediaInfo(ids);
                 }
 
                 if (command === 'delete_media_info_persist') {

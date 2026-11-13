@@ -30,6 +30,7 @@ namespace MediaInfoKeeper.Web {
         private readonly ScanExternalFilesRouteHandler _scanExternalFilesHandler;
         private readonly ScanIntroRouteHandler _scanIntroHandler;
         private readonly SetIntroRouteHandler _setIntroHandler;
+        private readonly RestoreMediaInfoRouteHandler _restoreHandler;
 
         public PluginWebResourceService(
             IHttpResultFactory resultFactory,
@@ -42,6 +43,7 @@ namespace MediaInfoKeeper.Web {
             _jsonSerializer = jsonSerializer;
             _extractHandler = new ExtractMediaInfoRouteHandler(Plugin.LibraryService.ExpandItem);
             _exportHandler = new ExportMediaInfoRouteHandler(Plugin.LibraryService.ExpandItem);
+            _restoreHandler = new RestoreMediaInfoRouteHandler(Plugin.LibraryService.ExpandItem);
             _deletePersistHandler =
                 new DeleteMediaInfoPersistRouteHandler(Plugin.LibraryService.ExpandItem, libraryManager,
                     itemRepository);
@@ -176,6 +178,10 @@ namespace MediaInfoKeeper.Web {
 
         public MediaInfoMenuResponse Post(ExportMediaInfoRequest request) {
             return _exportHandler.Handle(request);
+        }
+
+        public MediaInfoMenuResponse Post(RestoreMediaInfoRequest request) {
+            return _restoreHandler.Handle(request);
         }
 
         public MediaInfoMenuResponse Post(DeleteMediaInfoPersistRequest request) {
