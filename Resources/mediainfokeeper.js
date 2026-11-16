@@ -223,7 +223,7 @@ define(['connectionManager', 'globalize', 'loading', 'toast', 'confirm'], functi
             return 'Completed (no stats in response, check server logs)';
         }
 
-        if (isGenerateThumbnails) {
+        if (action === 'generate_thumbnails') {
             // 缩略图在后台生成，这里只代表“已提交”，不代表已生成完成
             // 提示在点击后立即显示，此时后台还没开始，所以只在提交失败（如找不到生成器）时才显示失败数
             if (locale === 'zh-cn') {
